@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flame Sensor Dashboard — IoT</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --fire: #E24B4A; --fire-light: #FCEBEB;
+      --amber: #EF9F27; --amber-light: #FAEEDA;
+      --green: #639922; --green-light: #EAF3DE;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-d: 'Syne', sans-serif;
+      --bg: #f5f4f1; --surface: #ffffff;
+      --border: rgba(0,0,0,0.1);
+      --text: #1a1a18; --text-muted: #6b6b68; --text-hint: #9b9b98;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a18; --surface: #242422;
+        --border: rgba(255,255,255,0.1);
+        --text: #f0ede8; --text-muted: #9b9b98; --text-hint: #6b6b68;
+      }
+    }
+    body { background: var(--bg); font-family: var(--font-d); color: var(--text); min-height: 100vh; }
+
+    /* PAGE */
+    .page { display: none; }
+    .page.active { display: block; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+
+    /* NAV */
+    nav { background: var(--surface); border-bottom: 0.5px solid var(--border); position: sticky; top: 0; z-index: 100; }
+    .nav-inner { max-width: 900px; margin: 0 auto; padding: 0 1rem; display: flex; align-items: center; justify-content: space-between; height: 52px; }
+    .nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--text); }
+    .nav-brand i { color: var(--fire); font-size: 20px; }
+    .nav-tabs { display: flex; gap: 4px; }
+    .nav-tab { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--text-muted); transition: all .2s; font-family: var(--font-d); }
+    .nav-tab:hover { background: rgba(128,128,128,.1); color: var(--text); }
+    .nav-tab.active { background: var(--fire-light); color: var(--fire); }
+
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.3)} }
+    @keyframes flash  { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes shake  { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-4px)} 40%,80%{transform:translateX(4px)} }
+
+    /* SOURCE BAR */
+    .source-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-radius: 10px; margin-bottom: 1.25rem; border: 1.5px solid; font-size: 13px; font-weight: 500; transition: all .4s; }
+    .source-bar.demo-aman      { background: #EAF3DE; border-color: #C0DD97; color: #3B6D11; }
+    .source-bar.demo-peringatan{ background: #FAEEDA; border-color: #FAC775; color: #854F0B; }
+    .source-bar.demo-bahaya    { background: #FCEBEB; border-color: #F09595; color: #A32D2D; animation: shake 1.2s infinite; }
+    .source-bar.live           { background: #EAF3DE; border-color: #C0DD97; color: #3B6D11; }
+    .source-bar .src-left { display: flex; align-items: center; gap: 10px; }
+    .src-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .src-dot.blink { animation: pulse 1.2s infinite; }
+    .source-bar .src-right { font-size: 11px; font-family: var(--font-mono); opacity: .8; }
+
+    /* SIMULATION MODE SWITCHER */
+    .sim-switcher { display: flex; gap: 6px; margin-bottom: 1.25rem; }
+    .sim-btn {
+      flex: 1; padding: 9px 6px; border-radius: 10px; border: 1.5px solid transparent;
+      font-size: 12px; font-weight: 700; font-family: var(--font-d);
+      cursor: pointer; transition: all .2s; letter-spacing: .04em;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    .sim-btn i { font-size: 18px; }
+    .sim-btn.aman       { background: #EAF3DE; color: #3B6D11; border-color: #C0DD97; }
+    .sim-btn.peringatan { background: #FAEEDA; color: #854F0B; border-color: #FAC775; }
+    .sim-btn.bahaya     { background: #FCEBEB; color: #A32D2D; border-color: #F7C1C1; }
+    .sim-btn.aman.active       { border-color: #639922; box-shadow: 0 0 0 3px rgba(99,153,34,.2); }
+    .sim-btn.peringatan.active { border-color: #EF9F27; box-shadow: 0 0 0 3px rgba(239,159,39,.2); }
+    .sim-btn.bahaya.active     { border-color: #E24B4A; box-shadow: 0 0 0 3px rgba(226,75,74,.25); }
+    .sim-btn.hidden { display: none; }
+
+    /* HEADER */
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; border-bottom: 0.5px solid var(--border); padding-bottom: 1rem; }
+    .header h1 { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: .04em; }
+    .header p  { font-size: 12px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+    .badge { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 14px; border-radius: 8px; font-weight: 500; }
+    .badge.alert   { background: #FCEBEB; color: #A32D2D; }
+    .badge.warning { background: #FAEEDA; color: #854F0B; }
+    .badge.safe    { background: #EAF3DE; color: #3B6D11; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.5s infinite; }
+
+    /* FLAME BANNER */
+    .flame-banner { display: flex; align-items: center; gap: 14px; border-radius: 12px; padding: 14px 18px; margin-bottom: 1.25rem; transition: all .3s; border: 1.5px solid; }
+    .flame-banner.aman      { background: #EAF3DE; border-color: #C0DD97; }
+    .flame-banner.peringatan{ background: #FAEEDA; border-color: #FAC775; }
+    .flame-banner.bahaya    { background: #FCEBEB; border-color: #F09595; }
+    .flame-banner .fi { font-size: 36px; flex-shrink: 0; }
+    .flame-banner.aman       .fi { color: #639922; }
+    .flame-banner.peringatan .fi { color: #EF9F27; }
+    .flame-banner.bahaya     .fi { color: var(--fire); animation: flash .5s infinite; }
+    .flame-banner h3 { font-size: 15px; font-weight: 700; }
+    .flame-banner.aman       h3 { color: #3B6D11; }
+    .flame-banner.peringatan h3 { color: #854F0B; }
+    .flame-banner.bahaya     h3 { color: #A32D2D; }
+    .flame-banner p { font-size: 12px; margin-top: 2px; font-family: var(--font-mono); opacity: .75; color: inherit; }
+
+    /* SENSOR CARDS */
+    .sensor-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 10px; margin-bottom: 1.25rem; }
+    .sc { background: var(--surface); border: 0.5px solid var(--border); border-radius: 12px; padding: 14px; transition: border .3s; }
+    .sc.danger  { border: 1.5px solid var(--fire); }
+    .sc.warning { border: 1.5px solid var(--amber); }
+    .sc .icon { font-size: 22px; margin-bottom: 8px; color: var(--text-muted); }
+    .sc.danger  .icon { color: var(--fire); }
+    .sc.warning .icon { color: var(--amber); }
+    .sc .lbl  { font-size: 11px; color: var(--text-muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; }
+    .sc .val  { font-size: 28px; font-weight: 700; color: var(--text); font-family: var(--font-mono); line-height: 1; }
+    .sc .unit { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .bar-t { height: 4px; background: rgba(128,128,128,.15); border-radius: 2px; margin-top: 10px; }
+    .bar-f { height: 4px; border-radius: 2px; transition: width .6s ease; }
+    .normal  .bar-f { background: var(--green); }
+    .warning .bar-f { background: var(--amber); }
+    .danger  .bar-f { background: var(--fire); animation: flash .6s infinite; }
+
+    /* TWO COL */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.25rem; }
+    @media (max-width:560px){ .two-col { grid-template-columns: 1fr; } }
+    .panel { background: var(--surface); border: 0.5px solid var(--border); border-radius: 12px; padding: 14px; }
+    .ptitle { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+
+    /* ZONE MAP */
+    .map-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .zone { border: 0.5px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; transition: all .3s; }
+    .zone .z-name { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .zone .z-s    { font-size: 12px; font-weight: 500; }
+    .zone.safe { background: #EAF3DE; border-color: #C0DD97; } .zone.safe .z-s { color: #3B6D11; }
+    .zone.warn { background: #FAEEDA; border-color: #FAC775; } .zone.warn .z-s { color: #854F0B; }
+    .zone.fire { background: #FCEBEB; border-color: #F7C1C1; animation: flash .8s infinite; } .zone.fire .z-s { color: #A32D2D; }
+
+    /* LOG */
+    .log-list { display: flex; flex-direction: column; gap: 7px; max-height: 164px; overflow-y: auto; }
+    .log-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+    .log-time { font-family: var(--font-mono); color: var(--text-hint); white-space: nowrap; flex-shrink: 0; }
+    .ld { width: 6px; height: 6px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+    .ld.d { background: var(--fire); } .ld.w { background: var(--amber); } .ld.ok { background: var(--green); }
+    .log-msg { color: var(--text-muted); line-height: 1.4; }
+
+    /* CHART */
+    .chart-panel { background: var(--surface); border: 0.5px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 1.25rem; }
+    .chart-wrap  { position: relative; height: 160px; }
+    .legend { display: flex; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
+    .legend span { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted); }
+    .legend-box { width: 10px; height: 10px; border-radius: 2px; }
+
+    /* BOTTOM STATS */
+    .bottom-bar { display: grid; grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap: 8px; }
+    .st { background: rgba(128,128,128,.08); border-radius: 8px; padding: 10px 12px; }
+    .st .sl { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+    .st .sv { font-size: 18px; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
+
+    /* ── CONFIG PAGE ── */
+    .cfg-hero { background: var(--surface); border: 0.5px solid var(--border); border-radius: 16px; padding: 2rem; margin-bottom: 1.25rem; text-align: center; }
+    .cfg-hero i { font-size: 40px; color: var(--fire); margin-bottom: 12px; }
+    .cfg-hero h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .cfg-hero p  { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .cfg-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 1rem; }
+    .cfg-card h3 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 6px; letter-spacing: .04em; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; letter-spacing: .04em; }
+    .field input, .field select { width: 100%; padding: 9px 12px; font-size: 13px; font-family: var(--font-mono); border: 0.5px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; transition: border-color .2s; }
+    .field input:focus { border-color: rgba(226,75,74,.5); }
+    .pin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .threshold-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+    .btn { padding: 9px 20px; font-size: 13px; font-family: var(--font-d); font-weight: 500; border-radius: 8px; cursor: pointer; transition: all .2s; display: flex; align-items: center; gap: 6px; }
+    .btn-primary { background: var(--fire); color: #fff; border: none; }
+    .btn-primary:hover { background: #c93f3e; }
+    .btn-outline { background: transparent; border: 0.5px solid var(--border); color: var(--text-muted); }
+    .btn-outline:hover { border-color: var(--fire); color: var(--fire); }
+    .btn-teal { background: #1D9E75; color: #fff; border: none; }
+    .btn-teal:hover { background: #178a65; }
+    .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-family: var(--font-mono); margin-top: 10px; }
+    .status-pill.idle    { background: rgba(128,128,128,.1); color: var(--text-muted); }
+    .status-pill.ok      { background: #EAF3DE; color: #3B6D11; }
+    .status-pill.error   { background: #FCEBEB; color: #A32D2D; }
+    .status-pill.loading { background: #FAEEDA; color: #854F0B; }
+    .info-box { background: rgba(128,128,128,.06); border: 0.5px solid var(--border); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+    .info-box code { font-family: var(--font-mono); background: rgba(128,128,128,.12); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-brand"><i class="ti ti-flame"></i> Flame Sensor IoT</div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="goPage('dashboard', this)"><i class="ti ti-layout-dashboard"></i> Dashboard</button>
+      <button class="nav-tab" onclick="goPage('config', this)"><i class="ti ti-settings"></i> Konfigurasi</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ══ PAGE: DASHBOARD ══ -->
+<div id="page-dashboard" class="page active">
+<div class="wrap">
+
+  <!-- SOURCE INDICATOR -->
+  <div class="source-bar demo-aman" id="source-bar">
+    <div class="src-left">
+      <span class="src-dot blink"></span>
+      <span id="src-label">Simulasi · Mode Aman</span>
+    </div>
+    <span class="src-right" id="src-detail">demo · update setiap 2 detik</span>
+  </div>
+
+  <!-- SIMULATION MODE SWITCHER (hanya tampil saat demo) -->
+  <div class="sim-switcher" id="sim-switcher">
+    <button class="sim-btn aman active" onclick="setSimMode('aman')">
+      <i class="ti ti-shield-check"></i> AMAN
+    </button>
+    <button class="sim-btn peringatan" onclick="setSimMode('peringatan')">
+      <i class="ti ti-alert-triangle"></i> PERINGATAN
+    </button>
+    <button class="sim-btn bahaya" onclick="setSimMode('bahaya')">
+      <i class="ti ti-flame"></i> BAHAYA
+    </button>
+  </div>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <h1><i class="ti ti-flame" style="font-size:20px;vertical-align:-2px;margin-right:6px;color:#E24B4A"></i>Flame Sensor Dashboard</h1>
+      <p id="clock">--:--:-- · IoT Flame Monitoring</p>
+    </div>
+    <div id="main-badge" class="badge safe"><span class="dot"></span><span id="badge-txt">SISTEM AMAN</span></div>
+  </div>
+
+  <!-- FLAME BANNER -->
+  <div class="flame-banner aman" id="flame-banner">
+    <div class="fi"><i class="ti ti-shield-check" id="banner-icon"></i></div>
+    <div>
+      <h3 id="banner-title">Tidak Ada Api Terdeteksi</h3>
+      <p id="flame-detail">Semua sensor normal · sistem standby</p>
+    </div>
+  </div>
+
+  <!-- SENSOR CARDS -->
+  <div class="sensor-grid">
+    <div class="sc normal" id="card-ir">
+      <div class="icon"><i class="ti ti-eye"></i></div>
+      <div class="lbl">IR Flame Sensor</div>
+      <div class="val" id="val-ir" style="font-size:16px;margin-top:4px">NO FIRE</div>
+      <div class="unit" id="ir-zone">Semua zona · normal</div>
+      <div class="bar-t"><div class="bar-f" id="bar-ir" style="width:2%"></div></div>
+    </div>
+    <div class="sc normal" id="card-temp">
+      <div class="icon"><i class="ti ti-temperature"></i></div>
+      <div class="lbl">Suhu</div>
+      <div class="val" id="val-temp">28</div>
+      <div class="unit">°C</div>
+      <div class="bar-t"><div class="bar-f" id="bar-temp" style="width:28%"></div></div>
+    </div>
+    <div class="sc normal" id="card-smoke">
+      <div class="icon"><i class="ti ti-wind"></i></div>
+      <div class="lbl">Asap</div>
+      <div class="val" id="val-smoke">8</div>
+      <div class="unit">ppm</div>
+      <div class="bar-t"><div class="bar-f" id="bar-smoke" style="width:8%"></div></div>
+    </div>
+    <div class="sc normal" id="card-hum">
+      <div class="icon"><i class="ti ti-droplet"></i></div>
+      <div class="lbl">Kelembaban</div>
+      <div class="val" id="val-hum">55</div>
+      <div class="unit">%RH</div>
+      <div class="bar-t"><div class="bar-f" id="bar-hum" style="width:55%"></div></div>
+    </div>
+  </div>
+
+  <!-- ZONA + LOG -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="ptitle"><i class="ti ti-map-2"></i> Peta Zona Gedung</div>
+      <div class="map-grid" id="zone-map">
+        <div class="zone safe"><div class="z-name">Lantai B1</div><div class="z-s"><i class="ti ti-check"></i> Aman</div></div>
+        <div class="zone safe"><div class="z-name">Lantai 1</div> <div class="z-s"><i class="ti ti-check"></i> Aman</div></div>
+        <div class="zone safe"><div class="z-name">Lantai 2</div> <div class="z-s"><i class="ti ti-check"></i> Aman</div></div>
+        <div class="zone safe"><div class="z-name">Lantai 3</div> <div class="z-s"><i class="ti ti-check"></i> Aman</div></div>
+        <div class="zone safe"><div class="z-name">Lantai 4</div> <div class="z-s"><i class="ti ti-check"></i> Aman</div></div>
+        <div class="zone safe"><div class="z-name">Rooftop</div>  <div class="z-s"><i class="ti ti-check"></i> Aman</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle"><i class="ti ti-list"></i> Log Kejadian</div>
+      <div class="log-list" id="log-list"></div>
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="chart-panel">
+    <div class="ptitle"><i class="ti ti-chart-line"></i> Tren Suhu & Asap (30 menit terakhir)</div>
+    <div class="legend">
+      <span><span class="legend-box" style="background:#E24B4A"></span> Suhu (°C)</span>
+      <span><span class="legend-box" style="background:transparent;border:1.5px dashed #EF9F27"></span> Asap (ppm)</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="trendChart" role="img" aria-label="Grafik tren suhu dan asap 30 menit terakhir">Tren suhu dan asap.</canvas>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="bottom-bar">
+    <div class="st"><div class="sl">Sensor Aktif</div><div class="sv">8 / 8</div></div>
+    <div class="st"><div class="sl">Api Terdeteksi</div><div class="sv" id="st-fire" style="color:#639922">0 zona</div></div>
+    <div class="st"><div class="sl">Alert Hari Ini</div><div class="sv" id="st-alert">0</div></div>
+    <div class="st"><div class="sl">Update Terakhir</div><div class="sv" id="st-upd">--</div></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══ PAGE: KONFIGURASI ══ -->
+<div id="page-config" class="page">
+<div class="wrap">
+
+  <div class="cfg-hero">
+    <i class="ti ti-plug-connected"></i>
+    <h2>Konfigurasi Blynk</h2>
+    <p>Hubungkan dashboard ke Blynk Cloud untuk menerima data sensor secara real-time.<br>Isi token dan pin sesuai project Blynk Anda.</p>
+  </div>
+
+  <div class="cfg-card">
+    <h3><i class="ti ti-key"></i> Autentikasi Blynk</h3>
+    <div class="field">
+      <label>AUTH TOKEN</label>
+      <input id="blynk-token" type="password" placeholder="Paste token dari Blynk app..." autocomplete="off" />
+    </div>
+    <div class="field">
+      <label>BLYNK SERVER URL</label>
+      <input id="blynk-url" type="text" value="https://blynk.cloud" />
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-teal" onclick="startBlynk()"><i class="ti ti-plug"></i> Hubungkan & Live</button>
+      <button class="btn btn-outline" onclick="stopBlynk()"><i class="ti ti-player-stop"></i> Demo Mode</button>
+    </div>
+    <div class="status-pill idle" id="blynk-status">
+      <span>●</span> <span id="blynk-status-txt">Belum terhubung</span>
+    </div>
+  </div>
+
+  <div class="cfg-card">
+    <h3><i class="ti ti-git-branch"></i> Pemetaan Virtual Pin</h3>
+    <div class="pin-grid">
+      <div class="field"><label>FLAME SENSOR</label><input id="pin-flame" type="text" value="V0" /></div>
+      <div class="field"><label>SUHU (°C)</label><input id="pin-temp" type="text" value="V1" /></div>
+      <div class="field"><label>ASAP (ppm)</label><input id="pin-smoke" type="text" value="V2" /></div>
+      <div class="field"><label>KELEMBABAN (%RH)</label><input id="pin-hum" type="text" value="V3" /></div>
+    </div>
+  </div>
+
+  <div class="cfg-card">
+    <h3><i class="ti ti-adjustments"></i> Ambang Batas Alert</h3>
+    <div class="threshold-grid">
+      <div class="field"><label>SUHU BAHAYA (°C)</label><input id="thr-temp" type="number" value="60" min="30" max="120" /></div>
+      <div class="field"><label>ASAP BAHAYA (ppm)</label><input id="thr-smoke" type="number" value="60" min="10" max="200" /></div>
+      <div class="field"><label>INTERVAL FETCH (detik)</label><input id="thr-interval" type="number" value="2" min="1" max="60" /></div>
+    </div>
+    <button class="btn btn-outline" onclick="saveThreshold()"><i class="ti ti-device-floppy"></i> Simpan</button>
+  </div>
+
+  <div class="info-box">
+    <strong>Cara mendapatkan Auth Token:</strong><br>
+    Buka Blynk App → pilih device → <code>Device Info</code> → salin <code>Auth Token</code>.<br><br>
+    <strong>Format nilai Flame Sensor di Blynk:</strong><br>
+    Kirim <code>1</code> saat api terdeteksi, <code>0</code> saat tidak ada api.<br>
+    Contoh: <code>Blynk.virtualWrite(V0, digitalRead(FLAME_PIN) == LOW ? 1 : 0);</code>
+  </div>
+
+</div>
+</div>
+
+<script>
+/* ── UTILS ── */
+function fmt(n){ return String(n).padStart(2,'0'); }
+function nowStr(){ const d=new Date(); return `${fmt(d.getHours())}:${fmt(d.getMinutes())}`; }
+
+/* ── PAGE ROUTER ── */
+function goPage(id, btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+
+/* ── CLOCK ── */
+function updateClock(){
+  const d=new Date();
+  document.getElementById('clock').textContent=
+    `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())} · IoT Flame Monitoring`;
+}
+updateClock(); setInterval(updateClock,1000);
+
+/* ── CHART ── */
+const initTemp  = Array.from({length:30},()=>28);
+const initSmoke = Array.from({length:30},()=>8);
+const chart = new Chart(document.getElementById('trendChart'),{
+  type:'line',
+  data:{
+    labels: Array.from({length:30},(_,i)=>i===29?'Skrg':`-${29-i}m`),
+    datasets:[
+      {label:'Suhu (°C)', data:[...initTemp], borderColor:'#E24B4A',backgroundColor:'rgba(226,75,74,0.08)',borderWidth:2,pointRadius:0,tension:0.4,fill:true,yAxisID:'y'},
+      {label:'Asap (ppm)',data:[...initSmoke],borderColor:'#EF9F27',backgroundColor:'rgba(239,159,39,0.08)',borderWidth:2,pointRadius:0,tension:0.4,fill:true,yAxisID:'y2',borderDash:[5,3]}
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{color:'rgba(128,128,128,0.1)'},ticks:{color:'#888',font:{size:11}}},
+      y:{position:'left',grid:{color:'rgba(226,75,74,0.12)'},ticks:{color:'#E24B4A',font:{size:10}},title:{display:true,text:'°C',color:'#E24B4A',font:{size:10}}},
+      y2:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#BA7517',font:{size:10}},title:{display:true,text:'ppm',color:'#BA7517',font:{size:10}}}
+    }
+  }
+});
+
+/* ── LOG ── */
+let alertCount = 0;
+function addLog(type, msg){
+  const list = document.getElementById('log-list');
+  const item = document.createElement('div');
+  item.className='log-item';
+  item.innerHTML=`<span class="ld ${type}"></span><span class="log-time">${nowStr()}</span><span class="log-msg">${msg}</span>`;
+  list.prepend(item);
+  while(list.children.length > 20) list.removeChild(list.lastChild);
+}
+
+/* ── ZONE MAP ── */
+const zoneModes = {
+  aman:       ['safe','safe','safe','safe','safe','safe'],
+  peringatan: ['safe','safe','warn','warn','safe','safe'],
+  bahaya:     ['safe','safe','warn','fire','safe','safe'],
+};
+function updateZoneMap(mode){
+  const zones = document.querySelectorAll('#zone-map .zone');
+  const labels = ['Lantai B1','Lantai 1','Lantai 2','Lantai 3','Lantai 4','Rooftop'];
+  const icons  = { safe:'<i class="ti ti-check"></i>', warn:'<i class="ti ti-alert-triangle"></i>', fire:'<i class="ti ti-flame"></i>' };
+  const texts  = { safe:'Aman', warn:'Waspada', fire:'API!' };
+  zoneModes[mode].forEach((st,i)=>{
+    zones[i].className='zone '+st;
+    zones[i].innerHTML=`<div class="z-name">${labels[i]}</div><div class="z-s">${icons[st]} ${texts[st]}</div>`;
+  });
+}
+
+/* ── MAIN UI UPDATE ── */
+function updateUI(flame, temp, smoke, hum){
+  const thrTemp  = parseInt(document.getElementById('thr-temp')?.value  || 60);
+  const thrSmoke = parseInt(document.getElementById('thr-smoke')?.value || 60);
+  const flameOn  = flame==1||flame==='1'||flame===true;
+
+  // Banner
+  const banner = document.getElementById('flame-banner');
+  const bIcon  = document.getElementById('banner-icon');
+  const bTitle = document.getElementById('banner-title');
+  const bDetail= document.getElementById('flame-detail');
+  if(flameOn){
+    banner.className='flame-banner bahaya';
+    bIcon.className='ti ti-flame';
+    bTitle.textContent='API TERDETEKSI — Lantai 3';
+    bDetail.textContent='Sensor #F-03 aktif · intensitas tinggi';
+  } else if(temp >= thrTemp*0.75 || smoke >= thrSmoke*0.65){
+    banner.className='flame-banner peringatan';
+    bIcon.className='ti ti-alert-triangle';
+    bTitle.textContent='Peringatan — Suhu / Asap Meningkat';
+    bDetail.textContent=`Suhu ${Math.round(temp)}°C · Asap ${Math.round(smoke)}ppm`;
+  } else {
+    banner.className='flame-banner aman';
+    bIcon.className='ti ti-shield-check';
+    bTitle.textContent='Tidak Ada Api Terdeteksi';
+    bDetail.textContent='Semua sensor normal · sistem standby';
+  }
+
+  // Badge
+  const badge = document.getElementById('main-badge');
+  if(flameOn){
+    badge.className='badge alert';
+    document.getElementById('badge-txt').textContent='API TERDETEKSI';
+  } else if(temp >= thrTemp*0.75 || smoke >= thrSmoke*0.65){
+    badge.className='badge warning';
+    document.getElementById('badge-txt').textContent='PERINGATAN';
+  } else {
+    badge.className='badge safe';
+    document.getElementById('badge-txt').textContent='SISTEM AMAN';
+  }
+
+  // IR card
+  const irCard = document.getElementById('card-ir');
+  irCard.className = 'sc '+(flameOn?'danger':'normal');
+  document.getElementById('val-ir').textContent  = flameOn?'DETECT':'NO FIRE';
+  document.getElementById('ir-zone').textContent = flameOn?'Lantai 3 · #F-03':'Semua zona · normal';
+  document.getElementById('bar-ir').style.width  = flameOn?'100%':'2%';
+
+  const t=Math.round(temp);
+  document.getElementById('val-temp').textContent=t;
+  document.getElementById('bar-temp').style.width=Math.min(100,t)+'%';
+  document.getElementById('card-temp').className='sc '+(t>=thrTemp?'danger':t>=(thrTemp*.75)?'warning':'normal');
+
+  const s=Math.round(smoke);
+  document.getElementById('val-smoke').textContent=s;
+  document.getElementById('bar-smoke').style.width=Math.min(100,s)+'%';
+  document.getElementById('card-smoke').className='sc '+(s>=thrSmoke?'danger':s>=(thrSmoke*.65)?'warning':'normal');
+
+  const h=Math.round(hum);
+  document.getElementById('val-hum').textContent=h;
+  document.getElementById('bar-hum').style.width=Math.min(100,h)+'%';
+
+  chart.data.datasets[0].data.push(t); chart.data.datasets[0].data.shift();
+  chart.data.datasets[1].data.push(s); chart.data.datasets[1].data.shift();
+  chart.update('none');
+
+  document.getElementById('st-fire').textContent  = flameOn?'1 zona':'0 zona';
+  document.getElementById('st-fire').style.color  = flameOn?'#E24B4A':'#639922';
+  document.getElementById('st-upd').textContent   = nowStr();
+}
+
+/* ── SIMULATION MODES ── */
+let simMode = 'aman';
+let demoInterval = null;
+let isLive = false;
+
+const simProfiles = {
+  aman:       { flame:0, temp:[26,30],  smoke:[5,12],   hum:[50,65] },
+  peringatan: { flame:0, temp:[44,55],  smoke:[38,56],  hum:[35,50] },
+  bahaya:     { flame:1, temp:[70,90],  smoke:[65,95],  hum:[20,35] },
+};
+
+const simLogs = {
+  aman:       [['ok','Semua sensor dalam batas normal'],['ok','Sistem berjalan normal'],['ok','Kelembaban stabil']],
+  peringatan: [['w','Suhu meningkat di area Lantai 2'],['w','Asap terdeteksi ringan — Lantai 2-3'],['ok','Sensor aktif semua']],
+  bahaya:     [['d','Api terdeteksi sensor #F-03 Lantai 3'],['d','Suhu melonjak melewati ambang batas'],['w','Asap meningkat pesat di Lantai 2-3']],
+};
+
+function rand(min,max){ return min + Math.random()*(max-min); }
+
+function setSimMode(mode){
+  simMode = mode;
+  document.querySelectorAll('.sim-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.sim-btn.${mode}`).classList.add('active');
+  updateZoneMap(mode);
+
+  // clear log & add new entries
+  document.getElementById('log-list').innerHTML='';
+  simLogs[mode].forEach(([t,m])=>addLog(t,m));
+  if(mode==='bahaya') alertCount++;
+  document.getElementById('st-alert').textContent=alertCount;
+
+  // update source bar
+  const bar=document.getElementById('source-bar');
+  const lbl=document.getElementById('src-label');
+  bar.className=`source-bar demo-${mode}`;
+  lbl.textContent = mode==='aman'?'Simulasi · Mode Aman':mode==='peringatan'?'Simulasi · Mode Peringatan':'Simulasi · Mode BAHAYA';
+}
+
+function runDemo(){
+  clearInterval(demoInterval);
+  isLive=false;
+  document.getElementById('sim-switcher').style.display='flex';
+  setSimMode(simMode);
+  demoInterval=setInterval(()=>{
+    const p=simProfiles[simMode];
+    updateUI(
+      p.flame,
+      rand(p.temp[0],p.temp[1]),
+      rand(p.smoke[0],p.smoke[1]),
+      rand(p.hum[0],p.hum[1])
+    );
+  },2000);
+}
+runDemo();
+
+/* ── BLYNK ── */
+let blynkInterval=null;
+
+async function fetchPin(base,token,pin){
+  const p=pin.toLowerCase().replace('v','');
+  const res=await fetch(`${base}/external/api/get?token=${token}&v${p}`);
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return await res.json();
+}
+
+async function blynkTick(){
+  const token=document.getElementById('blynk-token').value.trim();
+  const base =document.getElementById('blynk-url').value.trim().replace(/\/$/,'');
+  const pF=document.getElementById('pin-flame').value.trim();
+  const pT=document.getElementById('pin-temp').value.trim();
+  const pS=document.getElementById('pin-smoke').value.trim();
+  const pH=document.getElementById('pin-hum').value.trim();
+  try{
+    const [flame,temp,smoke,hum]=await Promise.all([
+      fetchPin(base,token,pF),fetchPin(base,token,pT),
+      fetchPin(base,token,pS),fetchPin(base,token,pH)
+    ]);
+    updateUI(flame[0],parseFloat(temp[0]),parseFloat(smoke[0]),parseFloat(hum[0]));
+    const bar=document.getElementById('source-bar');
+    bar.className='source-bar live';
+    document.getElementById('src-label').textContent='Data Live Blynk — sensor nyata';
+    document.getElementById('src-detail').textContent='live · update '+nowStr();
+    setBlynkStatus('ok','Terhubung · '+nowStr());
+  }catch(e){
+    setBlynkStatus('error','Gagal: '+e.message);
+  }
+}
+
+function startBlynk(){
+  const token=document.getElementById('blynk-token').value.trim();
+  if(!token){alert('Masukkan Blynk Auth Token terlebih dahulu.');return;}
+  clearInterval(demoInterval);
+  clearInterval(blynkInterval);
+  isLive=true;
+  document.getElementById('sim-switcher').style.display='none';
+  setBlynkStatus('loading','Menghubungkan...');
+  const sec=parseInt(document.getElementById('thr-interval')?.value||2)*1000;
+  blynkTick();
+  blynkInterval=setInterval(blynkTick,sec);
+}
+
+function stopBlynk(){
+  clearInterval(blynkInterval);blynkInterval=null;
+  setBlynkStatus('idle','Demo mode aktif');
+  runDemo();
+}
+
+function setBlynkStatus(state,msg){
+  document.getElementById('blynk-status').className='status-pill '+state;
+  document.getElementById('blynk-status-txt').textContent=msg;
+}
+
+function saveThreshold(){ alert('Pengaturan ambang batas disimpan.'); }
+</script>
+</body>
+</html>
